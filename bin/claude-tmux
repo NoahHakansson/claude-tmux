@@ -1,0 +1,6 @@
+#!/usr/bin/env python3
+"""Compatibility wrapper for source checkouts."""
+
+from claude_tmux.cli import main
+
+raise SystemExit(main())

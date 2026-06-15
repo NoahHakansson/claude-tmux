@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "claude-tmux"
+version = "0.1.0"
+description = "Drive Claude Code's interactive TUI through tmux."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Noah Hakansson" }]
+keywords = ["claude-code", "tmux", "cli", "automation"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development",
+  "Topic :: Terminals",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/NoahHakansson/claude-tmux"
+Repository = "https://github.com/NoahHakansson/claude-tmux"
+Issues = "https://github.com/NoahHakansson/claude-tmux/issues"
+
+[project.scripts]
+claude-tmux = "claude_tmux.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/claude_tmux"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
