@@ -17,8 +17,13 @@ from dataclasses import dataclass
 #   "✻ Cooking for 3s"     (busy — present-participle verb, counting timer)
 #   "✢ Unfurling…"         (busy — just started, no timer yet)
 # Match it by shape instead of by a hard-coded verb list; the verbs change.
-_STATUS_LINE_RE = re.compile(r"^[✻✶✳✢⏺·◐◓◑◒▘▝▗▖]\s+(\w+)(?:\s+for\s+\S+)?\s*$")
-_PROMPT_RE = re.compile(r"^\s*❯\s*\S*\s*$")
+_STATUS_LINE_RE = re.compile(
+    r"^[✻✶✳✢⏺·◐◓◑◒▘▝▗▖]\s+(\w+)(?:(?:\s+for\s+\S+)|…)?\s*$"
+)
+# Match Claude Code's empty input prompt. Newer Claude Code renders a
+# non-breaking space after ❯, and the status line can be many blank lines above
+# the prompt when the terminal is tall.
+_PROMPT_RE = re.compile(r"^\s*❯[\s\u00a0]*$")
 
 
 class ClaudeTmuxError(RuntimeError):
@@ -77,15 +82,22 @@ def create_session(name: str, workdir: str, model: str | None, yes: bool) -> Non
 
 
 def get_status_line(pane: str) -> str | None:
-    """Return Claude Code's turn-status line if one is visible above the prompt."""
+    """Return Claude Code's latest turn-status line above the empty prompt."""
     lines = pane.splitlines()
     for index in range(len(lines) - 1, -1, -1):
         line = lines[index]
         if not _PROMPT_RE.match(line):
             continue
-        for candidate_index in (index - 2, index - 3, index - 4, index - 5):
-            if candidate_index < 0:
-                continue
+        # Claude Code 2.x can render the status line many blank rows above the
+        # empty prompt, with a custom status line below the prompt. Find the
+        # latest user prompt for the current turn and only scan after it, so an
+        # older completed status line is not mistaken for a still-running turn.
+        turn_start = -1
+        for prompt_index in range(index - 1, -1, -1):
+            if lines[prompt_index].lstrip().startswith("❯"):
+                turn_start = prompt_index
+                break
+        for candidate_index in range(index - 1, turn_start, -1):
             candidate = lines[candidate_index].strip()
             if _STATUS_LINE_RE.match(candidate):
                 return candidate
@@ -109,11 +121,34 @@ def is_ready(pane: str) -> bool:
     return has_prompt and looks_like_claude and not is_busy(pane)
 
 
-def wait_for_claude_ready(name: str, timeout: int = 30) -> None:
+def is_workspace_trust_prompt(pane: str) -> bool:
+    """Return True when Claude Code is waiting for the workspace trust dialog."""
+    return (
+        "Quick safety check" in pane
+        and "Is this a project you created or one you trust" in pane
+        and "Yes, I trust this folder" in pane
+    )
+
+
+def wait_for_claude_ready(name: str, timeout: int = 30, yes: bool = False) -> None:
     """Block until the Claude Code TUI appears ready to accept input."""
     deadline = time.time() + timeout
+    trust_accept_sent = False
     while time.time() < deadline:
-        if is_ready(tmux("capture-pane", "-t", name, "-p")):
+        pane = tmux("capture-pane", "-t", name, "-p")
+        if is_workspace_trust_prompt(pane):
+            if yes:
+                if not trust_accept_sent:
+                    tmux("send-keys", "-t", name, "Enter")
+                    trust_accept_sent = True
+                time.sleep(0.5)
+                continue
+            raise ClaudeTmuxError(
+                "Claude Code is waiting for workspace trust approval. "
+                "Rerun with `--yes` to accept 'Yes, I trust this folder' automatically, "
+                "or open this directory with `claude` once and approve it manually."
+            )
+        if is_ready(pane):
             return
         time.sleep(0.3)
     raise ClaudeTmuxError(f"Claude Code did not become ready in {name!r} within {timeout}s")
@@ -186,8 +221,13 @@ def extract_assistant_message(pane: str) -> str:
 
     body = lines[start_index:end_index]
     body[0] = re.sub(r"^\s*⏺\s?", "", body[0])
+    status_index = next(
+        (index for index, line in enumerate(body[1:], start=1) if _STATUS_LINE_RE.match(line.strip())),
+        None,
+    )
+    if status_index is not None:
+        body = body[:status_index]
     body = [line for line in body if not re.match(r"^\s*[─━═-]+\s*$", line)]
-    body = [line for line in body if not _STATUS_LINE_RE.match(line.strip())]
 
     while body and not body[0].strip():
         body.pop(0)
@@ -250,7 +290,7 @@ def main(argv: list[str] | None = None) -> int:
 
         if not session_exists(session):
             create_session(session, args.workdir, args.model, args.yes)
-            wait_for_claude_ready(session)
+            wait_for_claude_ready(session, yes=args.yes)
 
         send_prompt(session, args.prompt)
         pane = wait_for_idle(session, args.timeout)

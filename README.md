@@ -90,13 +90,13 @@ claude-tmux --workdir /path/to/project "Run the tests and explain any failures"
 claude-tmux --model sonnet "Review this diff"
 ```
 
-### Skip Claude Code permission prompts
+### Skip Claude Code permission prompts and accept workspace trust
 
 ```bash
 claude-tmux --yes "Implement the failing test fix"
 ```
 
-`--yes` passes `--dangerously-skip-permissions` through to Claude Code. Use it only in trusted directories where you are comfortable letting Claude Code run tools without interactive approvals.
+`--yes` passes `--dangerously-skip-permissions` through to Claude Code and, if Claude Code shows its workspace trust dialog, confirms `Yes, I trust this folder` automatically. Use it only in directories you trust and where you are comfortable letting Claude Code run tools without interactive approvals.
 
 ### Keep an ephemeral session for debugging
 
